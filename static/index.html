@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>YouTube Downloader</title>
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
+    <style>
+        body {
+            background-color: #f8f9fa;
+        }
+        .container {
+            margin-top: 50px;
+            max-width: 600px;
+        }
+        h1 {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        #downloadLink {
+            margin-top: 20px;
+            display: none;
+        }
+        .spinner-border {
+            margin-top: 20px;
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>YouTube Downloader</h1>
+        <form id="downloadForm" action="/download" method="post" class="form-group">
+            <input type="text" name="url" placeholder="YouTube Video URL" required class="form-control mb-2">
+            <select name="file_type" class="form-control mb-2">
+                <option value="audio">Audio (MP3)</option>
+                <option value="video">Video (MP4)</option>
+            </select>
+            <button type="submit" class="btn btn-primary btn-block">Download</button>
+            <div class="spinner-border" role="status" id="loadingSpinner">
+                <span class="sr-only">Loading...</span>
+            </div>
+        </form>
+        <div id="downloadLink">
+            <h2>Download your file:</h2>
+            <a id="fileLink" href="" class="btn btn-success" download>Click here to download</a>
+        </div>
+    </div>
+    <script>
+        document.getElementById('downloadForm').onsubmit = async (e) => {
+            e.preventDefault();
+            const formData = new FormData(e.target);
+            const spinner = document.getElementById('loadingSpinner');
+            const downloadLink = document.getElementById('downloadLink');
+
+            // Show loading spinner
+            spinner.style.display = 'block';
+            downloadLink.style.display = 'none';
+
+            const response = await fetch('/download', {
+                method: 'POST',
+                body: formData
+            });
+            const result = await response.json();
+            if (result.path) {
+                document.getElementById('fileLink').href = result.path;
+                downloadLink.style.display = 'block';
+            }
+
+            // Hide loading spinner
+            spinner.style.display = 'none';
+        };
+    </script>
+    <script src="https://code.jquery.com/jquery-3.5.1.slim.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.9.2/dist/umd/popper.min.js"></script>
+    <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.min.js"></script>
+</body>
+</html>

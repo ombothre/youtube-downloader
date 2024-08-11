@@ -1,42 +1,51 @@
-from fastapi import FastAPI, HTTPException
-from fastapi.responses import StreamingResponse
+from fastapi import FastAPI, Form
+from fastapi.responses import HTMLResponse, FileResponse
+from fastapi.staticfiles import StaticFiles
 import yt_dlp
-import tempfile
 import os
 
 app = FastAPI()
 
-@app.get("/download")
-async def download_video(url: str):
-    try:
-        # Use yt-dlp to extract the audio
-        ydl_opts = {
-            'format': 'bestaudio/best',
-            'extractaudio': True,
-            'audioformat': 'mp3',
-            'postprocessors': [{
-                'key': 'FFmpegExtractAudio',
-                'preferredcodec': 'mp3',
-                'preferredquality': '192',
-            }],
-            'quiet': True,
-            'outtmpl': os.path.join(tempfile.gettempdir(), '%(title)s.%(ext)s'),  # Save to a temporary file
-        }
+# Serve static files for the HTML page
+app.mount("/static", StaticFiles(directory="static"), name="static")
 
-        # Use a temporary file to store the downloaded audio
-        with tempfile.NamedTemporaryFile(delete=True, suffix=".mp3") as temp_file:
-            ydl_opts['outtmpl'] = temp_file.name  # Use the temp file for output
+@app.get("/", response_class=HTMLResponse)
+async def read_root():
+    return HTMLResponse(content=open("static/index.html").read())
 
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                ydl.download([url])  # Download the audio to the temp file
+@app.post("/download")
+async def download(url: str = Form(...), file_type: str = Form(...)):
+    output_path = "downloads"
+    os.makedirs(output_path, exist_ok=True)
 
-            # Seek to the beginning of the file for streaming
-            temp_file.seek(0)
+    ydl_opts = {
+        'outtmpl': f'{output_path}/%(title)s.%(ext)s',
+    }
 
-            # Create a StreamingResponse and set the filename for download
-            response = StreamingResponse(temp_file, media_type="audio/mpeg")
-            response.headers["Content-Disposition"] = f"attachment; filename={os.path.basename(temp_file.name)}"
-            return response
+    if file_type == 'audio':
+        ydl_opts['format'] = 'bestaudio/best'
+        ydl_opts['postprocessors'] = [{
+            'key': 'FFmpegExtractAudio',
+            'preferredcodec': 'mp3',
+            'preferredquality': '192',
+        }]
+    else:
+        ydl_opts['format'] = 'bestvideo+bestaudio/best'
+        ydl_opts['postprocessors'] = [{
+            'key': 'FFmpegVideoConvertor',
+            'preferedformat': 'mp4',
+        }]
 
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+    # Download the file
+    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+        ydl.download([url])
+
+    # Get the downloaded file path
+    downloaded_file = max([os.path.join(output_path, f) for f in os.listdir(output_path)], key=os.path.getctime)
+
+    return {"message": "Download complete", "path": f"/download/{os.path.basename(downloaded_file)}"}
+
+@app.get("/download/{file_name}")
+async def serve_file(file_name: str):
+    file_path = os.path.join("downloads", file_name)
+    return FileResponse(file_path)

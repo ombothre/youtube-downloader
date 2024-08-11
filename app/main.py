@@ -1,7 +1,8 @@
-from fastapi import FastAPI, Form
-from fastapi.responses import HTMLResponse, FileResponse
+from fastapi import FastAPI, Form, HTTPException
+from fastapi.responses import HTMLResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 import yt_dlp
+import tempfile
 import os
 
 app = FastAPI()
@@ -15,37 +16,41 @@ async def read_root():
 
 @app.post("/download")
 async def download(url: str = Form(...), file_type: str = Form(...)):
-    output_path = "downloads"
-    os.makedirs(output_path, exist_ok=True)
+    try:
+        # Set the output format based on the selected file type
+        if file_type == 'audio':
+            suffix = ".mp3"
+            ydl_opts = {
+                'format': 'bestaudio/best',
+                'extractaudio': True,
+                'audioformat': 'mp3',
+                'postprocessors': [{
+                    'key': 'FFmpegExtractAudio',
+                    'preferredcodec': 'mp3',
+                    'preferredquality': '192',
+                }],
+                'quiet': True,
+                'outtmpl': os.path.join(tempfile.gettempdir(), '%(title)s' + suffix),  # Save to a temp file
+            }
+        else:
+            suffix = ".mp4"
+            ydl_opts = {
+                'format': 'bestvideo+bestaudio/best',
+                'outtmpl': os.path.join(tempfile.gettempdir(), '%(title)s' + suffix),  # Save to a temp file
+            }
 
-    ydl_opts = {
-        'outtmpl': f'{output_path}/%(title)s.%(ext)s',
-    }
+        # Download the file using yt-dlp
+        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as temp_file:
+            ydl_opts['outtmpl'] = temp_file.name  # Use the temp file for output
 
-    if file_type == 'audio':
-        ydl_opts['format'] = 'bestaudio/best'
-        ydl_opts['postprocessors'] = [{
-            'key': 'FFmpegExtractAudio',
-            'preferredcodec': 'mp3',
-            'preferredquality': '192',
-        }]
-    else:
-        ydl_opts['format'] = 'bestvideo+bestaudio/best'
-        ydl_opts['postprocessors'] = [{
-            'key': 'FFmpegVideoConvertor',
-            'preferedformat': 'mp4',
-        }]
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                ydl.download([url])  # Download the audio/video to the temp file
 
-    # Download the file
-    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-        ydl.download([url])
+            temp_file.seek(0)  # Seek to the start of the file for reading
 
-    # Get the downloaded file path
-    downloaded_file = max([os.path.join(output_path, f) for f in os.listdir(output_path)], key=os.path.getctime)
+        # Return the file for download
+        media_type = "audio/mpeg" if file_type == "audio" else "video/mp4"
+        return StreamingResponse(temp_file, media_type=media_type, headers={"Content-Disposition": f"attachment; filename={os.path.basename(temp_file.name)}"})
 
-    return {"message": "Download complete", "path": f"/download/{os.path.basename(downloaded_file)}"}
-
-@app.get("/download/{file_name}")
-async def serve_file(file_name: str):
-    file_path = os.path.join("downloads", file_name)
-    return FileResponse(file_path)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))

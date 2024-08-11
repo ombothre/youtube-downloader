@@ -40,10 +40,7 @@ async def download(url: str = Form(...), file_type: str = Form(...)):
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         ydl.download([url])
 
-    # Get the downloaded file path
-    downloaded_file = max([os.path.join(output_path, f) for f in os.listdir(output_path)], key=os.path.getctime)
-
-    return {"message": "Download complete", "path": f"/download/{os.path.basename(downloaded_file)}"}
+    return {"message": "Download complete"}
 
 @app.get("/download/{file_name}")
 async def serve_file(file_name: str):
